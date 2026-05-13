@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>立直麻将 南四局 逆转条件计算器</title>
+<style>
+:root {
+  --bg: #1a241a;
+  --card-bg: #222922;
+  --border: #3a4a3a;
+  --text: #e0d8c8;
+  --text-dim: #988e7e;
+  --accent: #4a9e5e;
+  --accent-bright: #5fc07a;
+  --gold: #d4a843;
+  --red: #c05050;
+  --blue: #5080c0;
+  --dealer-bg: #3a2010;
+  --rank-1: #d4a843;
+  --rank-2: #8899aa;
+  --rank-3: #a07040;
+  --rank-4: #707070;
+  --impossible: #604040;
+  --easy: #3a6040;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Segoe UI', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  padding: 20px;
+}
+
+.container { max-width: 900px; margin: 0 auto; }
+
+/* Header */
+.header {
+  text-align: center;
+  padding: 24px 0 16px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 20px;
+}
+.header h1 {
+  font-size: 28px;
+  letter-spacing: 2px;
+  color: var(--gold);
+}
+.header .subtitle {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+
+/* Settings */
+.settings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 16px;
+  background: var(--card-bg);
+  border-radius: 8px;
+  margin-bottom: 20px;
+  border: 1px solid var(--border);
+}
+.settings label {
+  font-size: 13px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.settings input, .settings select {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 13px;
+  width: 70px;
+}
+.settings select { width: auto; cursor: pointer; }
+.settings .sep { color: var(--border); font-size: 18px; margin: 0 4px; }
+.settings .riichi-points {
+  color: var(--accent-bright);
+  font-weight: bold;
+  font-size: 13px;
+  min-width: 60px;
+}
+
+/* Player Cards */
+.players {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+@media (max-width: 700px) {
+  .players { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 400px) {
+  .players { grid-template-columns: 1fr; }
+}
+
+.player-card {
+  background: var(--card-bg);
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 12px;
+  text-align: center;
+  transition: border-color 0.2s;
+}
+.player-card.dealer {
+  border-color: #e8a040;
+  background: linear-gradient(135deg, #2a2218 0%, #322010 100%);
+  box-shadow: 0 0 12px rgba(232, 160, 64, 0.25);
+}
+
+.player-card .dealer-badge {
+  display: inline-block;
+  background: #c04020;
+  color: #ffe0c0;
+  font-size: 12px;
+  font-weight: bold;
+  padding: 2px 8px;
+  border-radius: 3px;
+  letter-spacing: 1px;
+  box-shadow: 0 0 6px rgba(200, 100, 40, 0.5);
+  flex-shrink: 0;
+}
+.player-card .name-input {
+  display: block;
+  width: 100%;
+  text-align: center;
+  background: transparent;
+  border: none;
+  border-bottom: 1px dashed var(--border);
+  color: var(--text);
+  font-size: 15px;
+  padding: 4px 0;
+  margin: 6px 0;
+  outline: none;
+}
+.player-card .name-input:focus {
+  border-bottom-color: var(--accent);
+}
+.player-card .score-input {
+  display: block;
+  width: 100%;
+  text-align: center;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--accent-bright);
+  font-size: 22px;
+  font-weight: bold;
+  padding: 6px 4px;
+  font-family: 'Consolas', 'Courier New', monospace;
+  outline: none;
+}
+.player-card .score-input:focus {
+  border-color: var(--accent);
+}
+.player-card .rank-display {
+  font-size: 13px;
+  margin-top: 6px;
+  font-weight: bold;
+}
+.player-card .rank-1-text { color: var(--rank-1); }
+.player-card .rank-2-text { color: var(--rank-2); }
+.player-card .rank-3-text { color: var(--rank-3); }
+.player-card .rank-4-text { color: var(--rank-4); }
+
+/* Results Section */
+.results-section {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.results-section h2 {
+  font-size: 16px;
+  padding: 14px 20px;
+  background: #252d25;
+  border-bottom: 1px solid var(--border);
+  color: var(--gold);
+  letter-spacing: 2px;
+}
+
+.player-result {
+  border-bottom: 1px solid var(--border);
+  padding: 16px 20px;
+}
+.player-result:last-child { border-bottom: none; }
+
+.player-result-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.player-result-header .pr-wind {
+  font-size: 17px;
+  font-weight: bold;
+}
+.player-result-header .pr-name {
+  font-size: 15px;
+}
+.player-result-header .pr-score {
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 16px;
+  color: var(--accent-bright);
+  font-weight: bold;
+}
+.player-result-header .pr-rank {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-weight: bold;
+}
+.rank-badge-1 { background: #3a3020; color: var(--rank-1); }
+.rank-badge-2 { background: #282c30; color: var(--rank-2); }
+.rank-badge-3 { background: #2a2218; color: var(--rank-3); }
+.rank-badge-4 { background: #242424; color: var(--rank-4); }
+
+.no-reversal {
+  color: var(--accent);
+  font-size: 14px;
+  padding: 4px 0;
+}
+
+.reversal-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.reversal-table th {
+  background: #1a1f1a;
+  padding: 8px 10px;
+  text-align: left;
+  font-weight: normal;
+  color: var(--text-dim);
+  border-bottom: 2px solid var(--border);
+  font-size: 12px;
+}
+.reversal-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #1a1f1a;
+  vertical-align: top;
+}
+.reversal-table .target-name {
+  font-weight: bold;
+  font-size: 14px;
+}
+.reversal-table .gap-value {
+  font-family: 'Consolas', 'Courier New', monospace;
+  color: var(--red);
+  font-weight: bold;
+}
+.reversal-table .gap-adjusted {
+  font-size: 11px;
+  color: var(--text-dim);
+  display: block;
+}
+.reversal-table .hand-value {
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-weight: bold;
+  font-size: 15px;
+}
+.reversal-table .hand-desc {
+  font-size: 12px;
+  color: var(--text-dim);
+  display: block;
+}
+.reversal-table .impossible {
+  color: var(--red);
+  font-weight: bold;
+}
+.reversal-table .easy-reversal {
+  color: var(--accent-bright);
+}
+.reversal-table tr:hover td {
+  background: #252d25;
+}
+
+/* Footer */
+.footer {
+  text-align: center;
+  padding: 20px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+/* Dealer selection radio style */
+.dealer-select {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.dealer-select label {
+  cursor: pointer;
+  padding: 3px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  font-size: 12px;
+  transition: all 0.15s;
+}
+.dealer-select input { display: none; }
+.dealer-select input:checked + span {
+  background: #c04020;
+  color: #ffe0c0;
+  border-color: #e8a040;
+  font-weight: bold;
+  box-shadow: 0 0 6px rgba(200, 100, 40, 0.4);
+}
+
+.uma-preset { font-size: 11px; }
+.uma-preset select { font-size: 11px; padding: 2px 4px; width: auto; }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <h1>🀀 立直麻将 南四局 逆转条件计算器</h1>
+    <div class="subtitle">南四局最终局逆转条件计算</div>
+  </div>
+
+  <!-- Settings Bar -->
+  <div class="settings">
+    <label>本场:</label>
+    <input type="number" id="honba" value="0" min="0" max="20" onchange="updateAll()">
+
+    <span class="sep">|</span>
+
+    <label>立直棒:</label>
+    <input type="number" id="riichiCount" value="0" min="0" max="4" onchange="updateAll()">
+    <span class="riichi-points" id="riichiPoints">= 0点</span>
+
+    <span class="sep">|</span>
+
+    <label>顺位点:</label>
+    <select id="umaPreset" onchange="updateUmaPreset()">
+      <option value="20,10,-10,-20">+20/+10/-10/-20</option>
+      <option value="30,10,-10,-30">+30/+10/-10/-30（WRC·M联盟）</option>
+      <option value="15,5,-5,-15">+15/+5/-5/-15（天凤）</option>
+      <option value="50,10,-10,-30">+50/+10/-10/-30</option>
+      <option value="10,5,-5,-10">+10/+5/-5/-10</option>
+      <option value="0,0,0,0">无</option>
+      <option value="custom">自定义</option>
+    </select>
+    <span id="customUma" style="display:none">
+      <input type="number" id="uma0" value="20" style="width:55px" onchange="updateAll()">
+      <input type="number" id="uma1" value="10" style="width:55px" onchange="updateAll()">
+      <input type="number" id="uma2" value="-10" style="width:55px" onchange="updateAll()">
+      <input type="number" id="uma3" value="-20" style="width:55px" onchange="updateAll()">
+    </span>
+
+    <span class="sep">|</span>
+
+    <label>起始点:</label>
+    <input type="number" id="startPoints" value="25000" min="0" max="50000" step="1000" style="width:80px" onchange="updateAll()">
+    <label>→ 返点:</label>
+    <input type="number" id="returnPoints" value="30000" min="0" max="50000" step="1000" style="width:80px" onchange="updateAll()">
+
+    <span class="sep">|</span>
+
+    <label>庄家: </label>
+    <div class="dealer-select" id="dealerSelect">
+      <label><input type="radio" name="dealer" value="0" checked onchange="updateAll()"><span>东家</span></label>
+      <label><input type="radio" name="dealer" value="1" onchange="updateAll()"><span>南家</span></label>
+      <label><input type="radio" name="dealer" value="2" onchange="updateAll()"><span>西家</span></label>
+      <label><input type="radio" name="dealer" value="3" onchange="updateAll()"><span>北家</span></label>
+    </div>
+  </div>
+
+  <!-- Player Cards -->
+  <div class="players" id="playerCards"></div>
+
+  <!-- Results -->
+  <div class="results-section">
+    <h2>逆转条件</h2>
+    <div id="results"></div>
+  </div>
+
+  <div class="footer">
+    点数计算基于标准点数表（含切上满贯）<br>
+    本场300点/场 · 立直棒1000点/根 · 连庄条件请自行判断
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════
+// Point Table Engine
+// ═══════════════════════════════════════
+
+function ceil100(n) { return Math.ceil(n / 100) * 100; }
+
+function computeBasePoints(han, fu) {
+  if (han >= 13) return 8000;
+  if (han >= 11) return 6000;
+  if (han >= 8) return 4000;
+  if (han >= 6) return 3000;
+  if (han >= 5) return 2000;
+
+  const raw = fu * Math.pow(2, han + 2);
+  // 切上满贯: base >= 1920 → mangan
+  if (raw >= 1920) return 2000;
+  return raw;
+}
+
+function computeHandValues(han, fu) {
+  const bp = computeBasePoints(han, fu);
+
+  const childRon = ceil100(bp * 4);
+  const dealerRon = ceil100(bp * 6);
+
+  const childTsumoChildShare = ceil100(bp);
+  const childTsumoDealerShare = ceil100(bp * 2);
+  const childTsumoTotal = childTsumoChildShare * 2 + childTsumoDealerShare;
+
+  const dealerTsumoShare = ceil100(bp * 2);
+  const dealerTsumoTotal = dealerTsumoShare * 3;
+
+  return {
+    han, fu,
+    basePoints: bp,
+    childRon,
+    dealerRon,
+    childTsumo: {
+      total: childTsumoTotal,
+      childShare: childTsumoChildShare,
+      dealerShare: childTsumoDealerShare
+    },
+    dealerTsumo: {
+      total: dealerTsumoTotal,
+      share: dealerTsumoShare
+    }
+  };
+}
+
+const FU_VALUES_RON = [25, 30, 40, 50, 60, 70, 80, 90, 100, 110];    // 20符仅存在于自摸
+const FU_VALUES_TSUMO = [20, 25, 30, 40, 50, 60, 70, 80, 90, 100, 110];
+
+function generateHands(forTsumo) {
+  const hands = [];
+  for (let han = 1; han <= 13; han++) {
+    let fuList;
+    if (han >= 5) {
+      fuList = [null];
+    } else if (han === 1) {
+      fuList = [30, 40, 50, 60, 70, 80, 90, 100, 110];
+    } else {
+      fuList = forTsumo ? [...FU_VALUES_TSUMO] : [...FU_VALUES_RON];
+      // 25符自摸至少3翻（七对子+其他役），25符荣和至少2翻
+      if (forTsumo && han === 2) {
+        fuList = fuList.filter(f => f !== 25);
+      }
+    }
+
+    for (const fu of fuList) {
+      const h = computeHandValues(han, fu === null ? 30 : fu);
+      if (fu === null) h.fu = null;
+      hands.push(h);
+    }
+  }
+
+  hands.sort((a, b) => {
+    const diff = a.childRon - b.childRon;
+    if (diff !== 0) return diff;
+    return (a.fu || 99) - (b.fu || 99);
+  });
+  return hands;
+}
+
+const RON_HANDS = generateHands(false);
+const TSUMO_HANDS = generateHands(true);
+
+// ═══════════════════════════════════════
+// Scenario Calculator
+// ═══════════════════════════════════════
+
+function describeHand(h) {
+  if (h.han >= 13) return '役满';
+  if (h.han >= 11) return '三倍满';
+  if (h.han >= 8) return '倍满';
+  if (h.han >= 6) return '跳满';
+  if (h.han >= 5) return '满贯';
+  if (h.han === 4 && h.basePoints >= 2000) return '满贯（切上）';
+  return `${h.han}翻${h.fu}符`;
+}
+
+function findMinRonHand(threshold, isDealer, strict) {
+  if (threshold <= 0) {
+    const h = RON_HANDS[0];
+    return { ...h, easy: true };
+  }
+  const valueKey = isDealer ? 'dealerRon' : 'childRon';
+  for (const h of RON_HANDS) {
+    const v = h[valueKey];
+    if (strict ? v > threshold : v >= threshold) return h;
+  }
+  return null;
+}
+
+function findMinTsumoHand(threshold, isDealer, targetIsDealer, strict) {
+  if (threshold <= 0) {
+    const h = TSUMO_HANDS[0];
+    return { ...h, easy: true };
+  }
+
+  for (const h of TSUMO_HANDS) {
+    let gapChange;
+    if (isDealer) {
+      gapChange = h.dealerTsumo.total + h.dealerTsumo.share;
+    } else {
+      if (targetIsDealer) {
+        gapChange = h.childTsumo.total + h.childTsumo.dealerShare;
+      } else {
+        gapChange = h.childTsumo.total + h.childTsumo.childShare;
+      }
+    }
+    if (strict ? gapChange > threshold : gapChange >= threshold) return h;
+  }
+  return null;
+}
+
+function findMinRonThirdHand(threshold, isDealer, strict) {
+  if (threshold <= 0) {
+    const h = RON_HANDS[0];
+    return { ...h, easy: true };
+  }
+  const valueKey = isDealer ? 'dealerRon' : 'childRon';
+  for (const h of RON_HANDS) {
+    const v = h[valueKey];
+    if (strict ? v > threshold : v >= threshold) return h;
+  }
+  return null;
+}
+
+function formatHandValue(h, isDealer) {
+  if (!h) return ['无法逆转', '役满也无法达成', 'impossible'];
+  const v = isDealer ? h.dealerRon : h.childRon;
+  const easy = h.easy;
+  const desc = describeHand(h);
+  const cls = easy ? 'easy-reversal' : '';
+  if (easy) {
+    return [`≥${v}点`, `至少 ${desc}`, cls];
+  }
+  return [`${v}点`, desc, cls];
+}
+
+function formatHandValueTsumo(h, isDealer) {
+  if (!h) return ['无法逆转', '役满也无法达成', 'impossible'];
+  const v = isDealer ? h.dealerTsumo.total : h.childTsumo.total;
+  const easy = h.easy;
+  const desc = describeHand(h);
+  const cls = easy ? 'easy-reversal' : '';
+  if (easy) {
+    return [`≥${v}点`, `至少 ${desc}`, cls];
+  }
+  return [`${v}点`, desc, cls];
+}
+
+// ═══════════════════════════════════════
+// Main Calculation
+// ═══════════════════════════════════════
+
+function getState() {
+  const defaultScores = [25000, 30000, 20000, 25000];
+  const defaultNames = ['东家', '南家', '西家', '北家'];
+  const windLabels = ['东家', '南家', '西家', '北家'];
+  const scores = [];
+  const names = [];
+  for (let i = 0; i < 4; i++) {
+    const scoreEl = document.getElementById(`score${i}`);
+    scores[i] = scoreEl ? (parseInt(scoreEl.value) || defaultScores[i]) : defaultScores[i];
+    const nameEl = document.getElementById(`name${i}`);
+    names[i] = nameEl ? (nameEl.value || defaultNames[i]) : defaultNames[i];
+  }
+  const dealer = parseInt(document.querySelector('input[name="dealer"]:checked').value);
+  const honba = parseInt(document.getElementById('honba').value) || 0;
+  const riichiCount = parseInt(document.getElementById('riichiCount').value) || 0;
+  const riichi = riichiCount * 1000;
+  const startPoints = parseInt(document.getElementById('startPoints').value) || 25000;
+  const returnPoints = parseInt(document.getElementById('returnPoints').value) || 30000;
+  const oka = Math.max(0, (returnPoints - startPoints) * 4);
+
+  let uma;
+  const preset = document.getElementById('umaPreset').value;
+  if (preset === 'custom') {
+    uma = [
+      parseInt(document.getElementById('uma0').value) || 0,
+      parseInt(document.getElementById('uma1').value) || 0,
+      parseInt(document.getElementById('uma2').value) || 0,
+      parseInt(document.getElementById('uma3').value) || 0,
+    ];
+  } else {
+    uma = preset.split(',').map(Number);
+  }
+
+  return { scores, names, dealer, honba, riichi, oka, uma, windLabels };
+}
+
+function getRankedOrder(scores) {
+  const indexed = scores.map((s, i) => ({ idx: i, score: s }));
+  // 同分时按风位顺序：东(0) > 南(1) > 西(2) > 北(3)
+  indexed.sort((a, b) => b.score - a.score || a.idx - b.idx);
+  return indexed.map(item => item.idx);
+}
+
+function getCurrentRank(scores, idx) {
+  const order = getRankedOrder(scores);
+  return order.indexOf(idx);
+}
+
+function getFinalScore(rawScore, rank, oka, uma) {
+  let s = rawScore + uma[rank];
+  if (rank === 0) s += oka;
+  return s;
+}
+
+function computeResults() {
+  const st = getState();
+  const { scores, names, dealer, honba, riichi, oka, uma } = st;
+  const B = honba * 300;
+  const R = riichi;
+
+  const rankOrder = getRankedOrder(scores);
+  const currentRank = rankOrder.map((_, i) => rankOrder.indexOf(i));
+
+  const results = [];
+
+  for (let x = 0; x < 4; x++) {
+    const xRank = currentRank[x];
+    const xIsDealer = (x === dealer);
+    const targets = [];
+
+    // Find all players ahead of X in ranking
+    for (let rank = 0; rank < xRank; rank++) {
+      const y = rankOrder[rank]; // player index at this rank
+      const yScore = scores[y];
+
+      // Raw gap
+      const rawGap = yScore - scores[x];
+      const rawGapAdjusted = rawGap; // used for hand calculation
+
+      // Gap with uma difference
+      // X moves to rank 'rank', Y drops to xRank (or rank+1 depending)
+      // For simplicity: X takes over Y's rank, Y drops one rank
+      const newRankX = rank;
+      const newRankY = Math.min(rank + 1, 3);
+      const finalGap = getFinalScore(yScore, newRankY, oka, uma) - getFinalScore(scores[x], newRankX, oka, uma);
+
+      const yIsDealer = (y === dealer);
+      const target = {
+        targetIdx: y,
+        targetName: names[y],
+        targetWind: st.windLabels[y],
+        targetRank: rank,
+        rawGap,
+        finalGap: finalGap > 0 ? finalGap : 0,
+        scenarios: {}
+      };
+
+      // 风位对比：追赶者风位劣于目标时(x>y)，需严格反超而非追平
+      const strict = x > y;
+
+      // Scenario: Ron Y directly
+      {
+        const t = Math.max(0, (rawGap - R) / 2 - B);
+        const h = findMinRonHand(t, xIsDealer, strict);
+        target.scenarios.ron = {
+          label: '直击',
+          threshold: t,
+          hand: h,
+          isDealer: xIsDealer
+        };
+      }
+
+      // Scenario: Tsumo
+      {
+        const t = Math.max(0, rawGap - R - 400 * honba);
+        const h = findMinTsumoHand(t, xIsDealer, yIsDealer, strict);
+        target.scenarios.tsumo = {
+          label: '自摸',
+          threshold: t,
+          hand: h,
+          isDealer: xIsDealer
+        };
+      }
+
+      // Scenario: Ron third party
+      {
+        const t = Math.max(0, rawGap - B - R);
+        const h = findMinRonThirdHand(t, xIsDealer, strict);
+        target.scenarios.ronThird = {
+          label: '旁击',
+          threshold: t,
+          hand: h,
+          isDealer: xIsDealer
+        };
+      }
+
+      targets.push(target);
+    }
+
+    results.push({
+      idx: x,
+      name: names[x],
+      wind: st.windLabels[x],
+      score: scores[x],
+      rank: xRank,
+      isDealer: xIsDealer,
+      targets
+    });
+  }
+
+  return results;
+}
+
+// ═══════════════════════════════════════
+// UI Rendering
+// ═══════════════════════════════════════
+
+function renderPlayerCards() {
+  const st = getState();
+  const rankOrder = getRankedOrder(st.scores);
+  const container = document.getElementById('playerCards');
+
+  let html = '';
+  for (let i = 0; i < 4; i++) {
+    const rank = rankOrder.indexOf(i);
+    const isDealer = i === st.dealer;
+    const dealerClass = isDealer ? ' dealer' : '';
+
+    html += `
+      <div class="player-card${dealerClass}">
+        <div style="display:flex;align-items:center;justify-content:center;gap:6px">
+          ${isDealer ? '<span class="dealer-badge">庄</span>' : ''}
+          <input class="name-input" id="name${i}" value="${escapeHtml(st.names[i])}" placeholder="${st.windLabels[i]}" onchange="updateAll()">
+        </div>
+        <input class="score-input" type="number" id="score${i}" value="${st.scores[i]}" onchange="updateAll()">
+        <div class="rank-display">
+          <span class="rank-${rank + 1}-text">${rank + 1}位</span>
+        </div>
+      </div>`;
+  }
+  container.innerHTML = html;
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function renderResults() {
+  const results = computeResults();
+  const container = document.getElementById('results');
+  const rankLabels = ['1位', '2位', '3位', '4位'];
+
+  // Sort results by rank (4th first, so we see who needs to catch up)
+  results.sort((a, b) => b.rank - a.rank);
+
+  let html = '';
+  for (const r of results) {
+    const rankBadge = `rank-badge-${r.rank + 1}`;
+
+    if (r.targets.length === 0) {
+      // 1st place: any win keeps them 1st, show minimum winning hand
+      const minHand = RON_HANDS[0];
+      const minDesc = describeHand(minHand);
+      const ronPts = r.isDealer ? minHand.dealerRon : minHand.childRon;
+      const tsumoPts = r.isDealer ? minHand.dealerTsumo.total : minHand.childTsumo.total;
+      html += `
+        <div class="player-result">
+          <div class="player-result-header">
+            <span class="pr-wind">${r.wind}</span>
+            <span class="pr-name">${escapeHtml(r.name)}</span>
+            <span class="pr-score">${r.score.toLocaleString()}点</span>
+            <span class="pr-rank ${rankBadge}">${r.rank + 1}位</span>
+            ${r.isDealer ? '<span style="color:#e0a060;font-size:11px">庄</span>' : ''}
+          </div>
+          <table class="reversal-table">
+            <thead>
+              <tr>
+                <th style="width:25%">直击</th>
+                <th style="width:25%">自摸</th>
+                <th style="width:25%">旁击</th>
+                <th style="width:25%">说明</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="easy-reversal"><span class="hand-value">${ronPts}点</span><span class="hand-desc">${minDesc}</span></td>
+                <td class="easy-reversal"><span class="hand-value">${tsumoPts}点</span><span class="hand-desc">${minDesc}</span></td>
+                <td class="easy-reversal"><span class="hand-value">${ronPts}点</span><span class="hand-desc">${minDesc}</span></td>
+                <td><span style="color:var(--accent-bright);font-size:13px">任意和牌即可守住1位</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>`;
+      continue;
+    }
+
+    html += `
+      <div class="player-result">
+        <div class="player-result-header">
+          <span class="pr-wind">${r.wind}</span>
+          <span class="pr-name">${escapeHtml(r.name)}</span>
+          <span class="pr-score">${r.score.toLocaleString()}点</span>
+          <span class="pr-rank ${rankBadge}">${r.rank + 1}位</span>
+          ${r.isDealer ? '<span style="color:#e0a060;font-size:11px">庄</span>' : ''}
+        </div>
+        <table class="reversal-table">
+          <thead>
+            <tr>
+              <th style="width:22%">目标</th>
+              <th style="width:15%">点差</th>
+              <th style="width:21%">直击</th>
+              <th style="width:21%">自摸</th>
+              <th style="width:21%">旁击</th>
+            </tr>
+          </thead>
+          <tbody>`;
+
+    for (const t of r.targets) {
+      const [ronVal, ronDesc, ronCls] = formatHandValue(t.scenarios.ron.hand, t.scenarios.ron.isDealer);
+      const [tsumoVal, tsumoDesc, tsumoCls] = formatHandValueTsumo(t.scenarios.tsumo.hand, t.scenarios.tsumo.isDealer);
+      const [thirdVal, thirdDesc, thirdCls] = formatHandValue(t.scenarios.ronThird.hand, t.scenarios.ronThird.isDealer);
+
+      html += `
+        <tr>
+          <td>
+            <span class="target-name">${rankLabels[t.targetRank]} ${escapeHtml(t.targetName)}</span>
+          </td>
+          <td>
+            ${t.rawGap === 0
+              ? '<span class="gap-value" style="color:#e0a040">同点（需反超）</span>'
+              : `<span class="gap-value">${t.rawGap.toLocaleString()}点</span>`}
+          </td>
+          <td class="${ronCls}">
+            <span class="hand-value">${ronVal}</span>
+            <span class="hand-desc">${ronDesc}</span>
+          </td>
+          <td class="${tsumoCls}">
+            <span class="hand-value">${tsumoVal}</span>
+            <span class="hand-desc">${tsumoDesc}</span>
+          </td>
+          <td class="${thirdCls}">
+            <span class="hand-value">${thirdVal}</span>
+            <span class="hand-desc">${thirdDesc}</span>
+          </td>
+        </tr>`;
+    }
+
+    html += `</tbody></table></div>`;
+  }
+
+  container.innerHTML = html;
+
+  // Update riichi points display
+  const riichiCount = parseInt(document.getElementById('riichiCount').value) || 0;
+  document.getElementById('riichiPoints').textContent = `= ${(riichiCount * 1000).toLocaleString()}点`;
+}
+
+function updateAll() {
+  renderPlayerCards();
+  renderResults();
+}
+
+function updateUmaPreset() {
+  const preset = document.getElementById('umaPreset').value;
+  const customDiv = document.getElementById('customUma');
+  if (preset === 'custom') {
+    customDiv.style.display = 'inline';
+  } else {
+    customDiv.style.display = 'none';
+  }
+  updateAll();
+}
+
+// ═══════════════════════════════════════
+// Initialize
+// ═══════════════════════════════════════
+
+document.addEventListener('DOMContentLoaded', () => {
+  renderPlayerCards();
+  renderResults();
+});
+</script>
+
+</body>
+</html>

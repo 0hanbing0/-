@@ -1,0 +1,9 @@
+page {
+  font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  background: #1a241a;
+  color: #e0d8c8;
+  min-height: 100vh;
+  font-size: 28rpx;
+}
+
+

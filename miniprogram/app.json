@@ -1,0 +1,13 @@
+{
+  "pages": [
+    "pages/index/index"
+  ],
+  "window": {
+    "navigationBarTitleText": "南四局逆转条件计算器",
+    "navigationBarBackgroundColor": "#1a241a",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#1a241a"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}

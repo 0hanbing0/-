@@ -1,0 +1,151 @@
+<!-- 立直麻将 南四局 逆转条件计算器 -->
+<view class="container">
+  <!-- Header -->
+  <view class="header">
+    <text class="h-title">立直麻将 南四局 逆转条件计算器</text>
+    <text class="subtitle">南四局最终局逆转条件计算</text>
+  </view>
+
+  <!-- Settings Bar -->
+  <view class="settings">
+    <text class="s-label">本场:</text>
+    <input class="s-input" type="number" value="{{honba}}" bindinput="onHonbaInput" />
+
+    <text class="s-sep">|</text>
+
+    <text class="s-label">立直棒:</text>
+    <input class="s-input" type="number" value="{{riichiCount}}" bindinput="onRiichiInput" />
+    <text class="riichi-points">= {{riichiPoints}}点</text>
+
+    <text class="s-sep">|</text>
+
+    <text class="s-label">顺位点:</text>
+    <picker class="uma-picker" range="{{umaPresets}}" value="{{umaPresetIndex}}" bindchange="onUmaPresetChange">
+      <view class="picker-text">{{umaPresets[umaPresetIndex]}}</view>
+    </picker>
+    <view wx:if="{{showCustomUma}}" class="custom-uma">
+      <input class="s-input s-input-small" type="number" value="{{customUma[0]}}" bindinput="onUma0Input" />
+      <input class="s-input s-input-small" type="number" value="{{customUma[1]}}" bindinput="onUma1Input" />
+      <input class="s-input s-input-small" type="number" value="{{customUma[2]}}" bindinput="onUma2Input" />
+      <input class="s-input s-input-small" type="number" value="{{customUma[3]}}" bindinput="onUma3Input" />
+    </view>
+
+    <text class="s-sep">|</text>
+
+    <text class="s-label">起始点:</text>
+    <input class="s-input s-input-wide" type="number" value="{{startPoints}}" bindinput="onStartPointsInput" />
+    <text class="s-label">→ 返点:</text>
+    <input class="s-input s-input-wide" type="number" value="{{returnPoints}}" bindinput="onReturnPointsInput" />
+
+    <text class="s-sep">|</text>
+
+    <text class="s-label">庄家: </text>
+    <radio-group class="dealer-select" bindchange="onDealerChange">
+      <label class="dealer-radio" wx:for="{{windLabels}}" wx:key="index">
+        <radio value="{{index}}" checked="{{dealer === index}}" color="#c04020" />
+        <text>{{item}}</text>
+      </label>
+    </radio-group>
+
+    <text class="s-sep">|</text>
+
+    <label class="kiriage-label">
+      <switch checked="{{kiriage}}" bindchange="onKiriageChange" color="#4a9e5e" />
+      <text>切上满贯</text>
+    </label>
+  </view>
+
+  <!-- Player Cards -->
+  <view class="players">
+    <view class="player-card {{item.isDealer ? 'dealer' : ''}}" wx:for="{{players}}" wx:for-item="item" wx:key="index">
+      <view class="card-header">
+        <text wx:if="{{item.isDealer}}" class="dealer-badge">庄</text>
+        <input class="name-input" value="{{item.name}}" placeholder="{{windLabels[index]}}" data-index="{{index}}" bindinput="onNameInput" />
+      </view>
+      <input class="score-input" type="text" value="{{item.score}}" data-index="{{index}}" bindinput="onScoreInput" />
+      <view class="rank-display">
+        <text class="rank-{{item.rank+1}}-text">{{item.rank + 1}}位</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- Results -->
+  <view class="results-section">
+    <view class="results-title">逆转条件</view>
+
+    <block wx:for="{{sortedResults}}" wx:key="idx" wx:for-index="__ri">
+      <view class="player-result {{__ri === sortedResults.length - 1 ? 'player-result-last' : ''}}">
+        <view class="pr-header">
+          <text class="pr-wind">{{item.wind}}</text>
+          <text class="pr-name">{{item.name}}</text>
+          <text class="pr-score">{{item.scoreText}}点</text>
+          <text class="pr-rank rank-badge-{{item.rank+1}}">{{item.rank + 1}}位</text>
+          <text wx:if="{{item.isDealer}}" class="pr-dealer">庄</text>
+        </view>
+
+        <!-- 1st place: minimum hand info -->
+        <block wx:if="{{item.targets.length === 0}}">
+          <view class="rt-header">
+            <text class="rt-th" style="width:25%">直击</text>
+            <text class="rt-th" style="width:25%">自摸</text>
+            <text class="rt-th" style="width:25%">旁击</text>
+            <text class="rt-th" style="width:25%">说明</text>
+          </view>
+          <view class="rt-row">
+            <view class="rt-td" style="width:25%">
+              <text class="hand-value easy-reversal">{{item.minRonPts}}点</text>
+              <text class="hand-desc">{{item.minHandDesc}}</text>
+            </view>
+            <view class="rt-td" style="width:25%">
+              <text class="hand-value easy-reversal">{{item.minTsumoPts}}</text>
+              <text class="hand-desc">{{item.minHandDesc}}</text>
+            </view>
+            <view class="rt-td" style="width:25%">
+              <text class="hand-value easy-reversal">{{item.minRonPts}}点</text>
+              <text class="hand-desc">{{item.minHandDesc}}</text>
+            </view>
+            <view class="rt-td" style="width:25%">
+              <text class="no-reversal">任意和牌即可守住1位</text>
+            </view>
+          </view>
+        </block>
+
+        <!-- 2nd-4th place: targets -->
+        <block wx:else>
+          <view class="rt-header">
+            <text class="rt-th" style="width:22%">目标</text>
+            <text class="rt-th" style="width:15%">点差</text>
+            <text class="rt-th" style="width:21%">直击</text>
+            <text class="rt-th" style="width:21%">自摸</text>
+            <text class="rt-th" style="width:21%">旁击</text>
+          </view>
+          <view class="rt-row" wx:for="{{item.targets}}" wx:for-item="t" wx:key="targetIdx">
+            <view class="rt-td" style="width:22%">
+              <text class="target-name">{{t.rankLabel}} {{t.targetName}}</text>
+            </view>
+            <view class="rt-td" style="width:15%">
+              <text wx:if="{{t.rawGap === 0}}" class="gap-value">-0</text>
+              <text wx:else class="gap-value">{{t.rawGapText}}点</text>
+            </view>
+            <view class="rt-td {{t.ronCls}}" style="width:21%">
+              <text class="hand-value">{{t.ronVal}}</text>
+              <text class="hand-desc">{{t.ronDesc}}</text>
+            </view>
+            <view class="rt-td {{t.tsumoCls}}" style="width:21%">
+              <text class="hand-value">{{t.tsumoVal}}</text>
+              <text class="hand-desc">{{t.tsumoDesc}}</text>
+            </view>
+            <view class="rt-td {{t.thirdCls}}" style="width:21%">
+              <text class="hand-value">{{t.thirdVal}}</text>
+              <text class="hand-desc">{{t.thirdDesc}}</text>
+            </view>
+          </view>
+        </block>
+      </view>
+    </block>
+  </view>
+
+  <view class="footer">
+    <text>点数计算基于标准点数表（含切上满贯）\n本场300点/场 · 立直棒1000点/根 · 连庄条件请自行判断</text>
+  </view>
+</view>

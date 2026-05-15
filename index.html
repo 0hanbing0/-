@@ -120,16 +120,17 @@ body {
 }
 
 .player-card .dealer-badge {
-  display: inline-block;
+  position: absolute;
+  left: -4px;
+  top: -4px;
   background: #c04020;
   color: #ffe0c0;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: bold;
-  padding: 2px 8px;
+  padding: 2px 6px;
   border-radius: 3px;
   letter-spacing: 1px;
   box-shadow: 0 0 6px rgba(200, 100, 40, 0.5);
-  flex-shrink: 0;
 }
 .player-card .name-input {
   display: block;
@@ -322,6 +323,8 @@ body {
 
 .uma-preset { font-size: 11px; }
 .uma-preset select { font-size: 11px; padding: 2px 4px; width: auto; }
+
+#kiriage { cursor: pointer; vertical-align: middle; }
 </style>
 </head>
 <body>
@@ -348,8 +351,8 @@ body {
     <label>顺位点:</label>
     <select id="umaPreset" onchange="updateUmaPreset()">
       <option value="20,10,-10,-20">+20/+10/-10/-20</option>
-      <option value="30,10,-10,-30">+30/+10/-10/-30（WRC·M联盟）</option>
-      <option value="15,5,-5,-15">+15/+5/-5/-15（天凤）</option>
+      <option value="30,10,-10,-30" selected>+30/+10/-10/-30</option>
+      <option value="15,5,-5,-15">+15/+5/-5/-15</option>
       <option value="50,10,-10,-30">+50/+10/-10/-30</option>
       <option value="10,5,-5,-10">+10/+5/-5/-10</option>
       <option value="0,0,0,0">无</option>
@@ -367,7 +370,7 @@ body {
     <label>起始点:</label>
     <input type="number" id="startPoints" value="25000" min="0" max="50000" step="1000" style="width:80px" onchange="updateAll()">
     <label>→ 返点:</label>
-    <input type="number" id="returnPoints" value="30000" min="0" max="50000" step="1000" style="width:80px" onchange="updateAll()">
+    <input type="number" id="returnPoints" value="25000" min="0" max="50000" step="1000" style="width:80px" onchange="updateAll()">
 
     <span class="sep">|</span>
 
@@ -378,6 +381,13 @@ body {
       <label><input type="radio" name="dealer" value="2" onchange="updateAll()"><span>西家</span></label>
       <label><input type="radio" name="dealer" value="3" onchange="updateAll()"><span>北家</span></label>
     </div>
+
+    <span class="sep">|</span>
+
+    <label style="cursor:pointer">
+      <input type="checkbox" id="kiriage" checked onchange="updateAll()">
+      切上满贯
+    </label>
   </div>
 
   <!-- Player Cards -->
@@ -402,7 +412,7 @@ body {
 
 function ceil100(n) { return Math.ceil(n / 100) * 100; }
 
-function computeBasePoints(han, fu) {
+function computeBasePoints(han, fu, kiriage) {
   if (han >= 13) return 8000;
   if (han >= 11) return 6000;
   if (han >= 8) return 4000;
@@ -410,13 +420,13 @@ function computeBasePoints(han, fu) {
   if (han >= 5) return 2000;
 
   const raw = fu * Math.pow(2, han + 2);
-  // 切上满贯: base >= 1920 → mangan
-  if (raw >= 1920) return 2000;
+  if (raw > 2000) return 2000;           // 自然满贯上限（4翻40符以上）
+  if (kiriage && raw >= 1920) return 2000; // 切上满贯（4翻30符）
   return raw;
 }
 
-function computeHandValues(han, fu) {
-  const bp = computeBasePoints(han, fu);
+function computeHandValues(han, fu, kiriage) {
+  const bp = computeBasePoints(han, fu, kiriage);
 
   const childRon = ceil100(bp * 4);
   const dealerRon = ceil100(bp * 6);
@@ -448,7 +458,7 @@ function computeHandValues(han, fu) {
 const FU_VALUES_RON = [25, 30, 40, 50, 60, 70, 80, 90, 100, 110];    // 20符仅存在于自摸
 const FU_VALUES_TSUMO = [20, 25, 30, 40, 50, 60, 70, 80, 90, 100, 110];
 
-function generateHands(forTsumo) {
+function generateHands(forTsumo, kiriage) {
   const hands = [];
   for (let han = 1; han <= 13; han++) {
     let fuList;
@@ -458,14 +468,13 @@ function generateHands(forTsumo) {
       fuList = [30, 40, 50, 60, 70, 80, 90, 100, 110];
     } else {
       fuList = forTsumo ? [...FU_VALUES_TSUMO] : [...FU_VALUES_RON];
-      // 25符自摸至少3翻（七对子+其他役），25符荣和至少2翻
       if (forTsumo && han === 2) {
         fuList = fuList.filter(f => f !== 25);
       }
     }
 
     for (const fu of fuList) {
-      const h = computeHandValues(han, fu === null ? 30 : fu);
+      const h = computeHandValues(han, fu === null ? 30 : fu, kiriage);
       if (fu === null) h.fu = null;
       hands.push(h);
     }
@@ -479,20 +488,44 @@ function generateHands(forTsumo) {
   return hands;
 }
 
-const RON_HANDS = generateHands(false);
-const TSUMO_HANDS = generateHands(true);
+let RON_HANDS = generateHands(false, true);
+let TSUMO_HANDS = generateHands(true, true);
+let currentKiriage = true;
 
 // ═══════════════════════════════════════
 // Scenario Calculator
 // ═══════════════════════════════════════
 
+const YKM_LABELS = [null, '役满', '两倍役满', '三倍役满', '四倍役满', '五倍役满', '六倍役满'];
+
+function makeMultiYakuman(n) {
+  return {
+    han: 13,
+    fu: null,
+    basePoints: 8000 * n,
+    childRon: 32000 * n,
+    dealerRon: 48000 * n,
+    childTsumo: {
+      total: 32000 * n,
+      childShare: 8000 * n,
+      dealerShare: 16000 * n
+    },
+    dealerTsumo: {
+      total: 48000 * n,
+      share: 16000 * n
+    },
+    multiples: n
+  };
+}
+
 function describeHand(h) {
+  if (h.multiples >= 2) return YKM_LABELS[h.multiples];
   if (h.han >= 13) return '役满';
   if (h.han >= 11) return '三倍满';
   if (h.han >= 8) return '倍满';
   if (h.han >= 6) return '跳满';
   if (h.han >= 5) return '满贯';
-  if (h.han === 4 && h.basePoints >= 2000) return '满贯（切上）';
+  if (currentKiriage && h.han === 4 && h.basePoints >= 2000) return '满贯（切上）';
   return `${h.han}翻${h.fu}符`;
 }
 
@@ -505,6 +538,10 @@ function findMinRonHand(threshold, isDealer, strict) {
   for (const h of RON_HANDS) {
     const v = h[valueKey];
     if (strict ? v > threshold : v >= threshold) return h;
+  }
+  for (let n = 2; n <= 6; n++) {
+    const v = isDealer ? 48000 * n : 32000 * n;
+    if (strict ? v > threshold : v >= threshold) return makeMultiYakuman(n);
   }
   return null;
 }
@@ -528,6 +565,17 @@ function findMinTsumoHand(threshold, isDealer, targetIsDealer, strict) {
     }
     if (strict ? gapChange > threshold : gapChange >= threshold) return h;
   }
+  for (let n = 2; n <= 6; n++) {
+    let gapChange;
+    if (isDealer) {
+      gapChange = 64000 * n;
+    } else if (targetIsDealer) {
+      gapChange = 48000 * n;
+    } else {
+      gapChange = 40000 * n;
+    }
+    if (strict ? gapChange > threshold : gapChange >= threshold) return makeMultiYakuman(n);
+  }
   return null;
 }
 
@@ -541,6 +589,10 @@ function findMinRonThirdHand(threshold, isDealer, strict) {
     const v = h[valueKey];
     if (strict ? v > threshold : v >= threshold) return h;
   }
+  for (let n = 2; n <= 6; n++) {
+    const v = isDealer ? 48000 * n : 32000 * n;
+    if (strict ? v > threshold : v >= threshold) return makeMultiYakuman(n);
+  }
   return null;
 }
 
@@ -551,21 +603,23 @@ function formatHandValue(h, isDealer) {
   const desc = describeHand(h);
   const cls = easy ? 'easy-reversal' : '';
   if (easy) {
-    return [`≥${v}点`, `至少 ${desc}`, cls];
+    return [`≥${v}点`, desc, cls];
   }
   return [`${v}点`, desc, cls];
 }
 
 function formatHandValueTsumo(h, isDealer) {
   if (!h) return ['无法逆转', '役满也无法达成', 'impossible'];
-  const v = isDealer ? h.dealerTsumo.total : h.childTsumo.total;
+  const label = isDealer
+    ? h.dealerTsumo.share + 'ALL'
+    : h.childTsumo.childShare + ' ' + h.childTsumo.dealerShare;
   const easy = h.easy;
   const desc = describeHand(h);
   const cls = easy ? 'easy-reversal' : '';
   if (easy) {
-    return [`≥${v}点`, `至少 ${desc}`, cls];
+    return ['≥' + label, desc, cls];
   }
-  return [`${v}点`, desc, cls];
+  return [label, desc, cls];
 }
 
 // ═══════════════════════════════════════
@@ -573,23 +627,25 @@ function formatHandValueTsumo(h, isDealer) {
 // ═══════════════════════════════════════
 
 function getState() {
-  const defaultScores = [25000, 30000, 20000, 25000];
+  const defaultScores = [25000, 25000, 25000, 25000];
   const defaultNames = ['东家', '南家', '西家', '北家'];
   const windLabels = ['东家', '南家', '西家', '北家'];
   const scores = [];
   const names = [];
   for (let i = 0; i < 4; i++) {
     const scoreEl = document.getElementById(`score${i}`);
-    scores[i] = scoreEl ? (parseInt(scoreEl.value) || defaultScores[i]) : defaultScores[i];
+    if (!scoreEl) { scores[i] = defaultScores[i]; }
+    else { const v = parseInt(scoreEl.value); scores[i] = isNaN(v) ? 0 : v; }
     const nameEl = document.getElementById(`name${i}`);
-    names[i] = nameEl ? (nameEl.value || defaultNames[i]) : defaultNames[i];
+    if (!nameEl) { names[i] = defaultNames[i]; }
+    else { names[i] = nameEl.value; }
   }
   const dealer = parseInt(document.querySelector('input[name="dealer"]:checked').value);
   const honba = parseInt(document.getElementById('honba').value) || 0;
   const riichiCount = parseInt(document.getElementById('riichiCount').value) || 0;
   const riichi = riichiCount * 1000;
   const startPoints = parseInt(document.getElementById('startPoints').value) || 25000;
-  const returnPoints = parseInt(document.getElementById('returnPoints').value) || 30000;
+  const returnPoints = parseInt(document.getElementById('returnPoints').value) || 25000;
   const oka = Math.max(0, (returnPoints - startPoints) * 4);
 
   let uma;
@@ -605,7 +661,9 @@ function getState() {
     uma = preset.split(',').map(Number);
   }
 
-  return { scores, names, dealer, honba, riichi, oka, uma, windLabels };
+  const kiriage = document.getElementById('kiriage').checked;
+
+  return { scores, names, dealer, honba, riichi, oka, uma, windLabels, kiriage };
 }
 
 function getRankedOrder(scores) {
@@ -628,7 +686,11 @@ function getFinalScore(rawScore, rank, oka, uma) {
 
 function computeResults() {
   const st = getState();
-  const { scores, names, dealer, honba, riichi, oka, uma } = st;
+  const { scores, names, dealer, honba, riichi, oka, uma, kiriage } = st;
+
+  currentKiriage = kiriage;
+  RON_HANDS = generateHands(false, kiriage);
+  TSUMO_HANDS = generateHands(true, kiriage);
   const B = honba * 300;
   const R = riichi;
 
@@ -734,19 +796,31 @@ function renderPlayerCards() {
   const rankOrder = getRankedOrder(st.scores);
   const container = document.getElementById('playerCards');
 
+  // Preserve current raw input values from DOM so partial typing (e.g. "-") isn't lost
+  const rawScores = [];
+  const rawNames = [];
+  for (let i = 0; i < 4; i++) {
+    const scoreEl = document.getElementById(`score${i}`);
+    rawScores[i] = scoreEl ? scoreEl.value : st.scores[i];
+    const nameEl = document.getElementById(`name${i}`);
+    rawNames[i] = nameEl ? nameEl.value : st.names[i];
+  }
+
   let html = '';
   for (let i = 0; i < 4; i++) {
     const rank = rankOrder.indexOf(i);
     const isDealer = i === st.dealer;
     const dealerClass = isDealer ? ' dealer' : '';
+    const displayScore = rawScores[i] !== undefined ? rawScores[i] : st.scores[i];
+    const displayName = rawNames[i] !== undefined ? rawNames[i] : st.names[i];
 
     html += `
       <div class="player-card${dealerClass}">
-        <div style="display:flex;align-items:center;justify-content:center;gap:6px">
+        <div style="display:flex;align-items:center;justify-content:center;gap:6px;position:relative">
           ${isDealer ? '<span class="dealer-badge">庄</span>' : ''}
-          <input class="name-input" id="name${i}" value="${escapeHtml(st.names[i])}" placeholder="${st.windLabels[i]}" onchange="updateAll()">
+          <input class="name-input" id="name${i}" value="${escapeHtml(displayName)}" placeholder="${st.windLabels[i]}" onchange="updateAll()">
         </div>
-        <input class="score-input" type="number" id="score${i}" value="${st.scores[i]}" onchange="updateAll()">
+        <input class="score-input" type="text" inputmode="numeric" id="score${i}" value="${escapeHtml(displayScore)}" onchange="updateAll()">
         <div class="rank-display">
           <span class="rank-${rank + 1}-text">${rank + 1}位</span>
         </div>
@@ -778,7 +852,9 @@ function renderResults() {
       const minHand = RON_HANDS[0];
       const minDesc = describeHand(minHand);
       const ronPts = r.isDealer ? minHand.dealerRon : minHand.childRon;
-      const tsumoPts = r.isDealer ? minHand.dealerTsumo.total : minHand.childTsumo.total;
+      const tsumoPts = r.isDealer
+        ? minHand.dealerTsumo.share + 'ALL'
+        : minHand.childTsumo.childShare + ' ' + minHand.childTsumo.dealerShare;
       html += `
         <div class="player-result">
           <div class="player-result-header">
@@ -800,7 +876,7 @@ function renderResults() {
             <tbody>
               <tr>
                 <td class="easy-reversal"><span class="hand-value">${ronPts}点</span><span class="hand-desc">${minDesc}</span></td>
-                <td class="easy-reversal"><span class="hand-value">${tsumoPts}点</span><span class="hand-desc">${minDesc}</span></td>
+                <td class="easy-reversal"><span class="hand-value">${tsumoPts}</span><span class="hand-desc">${minDesc}</span></td>
                 <td class="easy-reversal"><span class="hand-value">${ronPts}点</span><span class="hand-desc">${minDesc}</span></td>
                 <td><span style="color:var(--accent-bright);font-size:13px">任意和牌即可守住1位</span></td>
               </tr>
@@ -842,9 +918,7 @@ function renderResults() {
             <span class="target-name">${rankLabels[t.targetRank]} ${escapeHtml(t.targetName)}</span>
           </td>
           <td>
-            ${t.rawGap === 0
-              ? '<span class="gap-value" style="color:#e0a040">同点（需反超）</span>'
-              : `<span class="gap-value">${t.rawGap.toLocaleString()}点</span>`}
+            <span class="gap-value">${t.rawGap === 0 ? '-0' : t.rawGap.toLocaleString() + '点'}</span>
           </td>
           <td class="${ronCls}">
             <span class="hand-value">${ronVal}</span>

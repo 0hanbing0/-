@@ -63,6 +63,10 @@
         <input class="name-input" value="{{item.name}}" placeholder="{{windLabels[index]}}" data-index="{{index}}" bindinput="onNameInput" />
       </view>
       <input class="score-input" type="text" value="{{item.score}}" data-index="{{index}}" bindinput="onScoreInput" />
+      <view class="carry-row">
+        <text class="carry-label">带入(分)</text>
+        <input class="carry-input" type="text" value="{{carryIn[index]}}" data-index="{{index}}" bindinput="onCarryInInput" />
+      </view>
       <view class="rank-display">
         <text class="rank-{{item.rank+1}}-text">{{item.rank + 1}}位</text>
       </view>
@@ -78,7 +82,7 @@
         <view class="pr-header">
           <text class="pr-wind">{{item.wind}}</text>
           <text class="pr-name">{{item.name}}</text>
-          <text class="pr-score">{{item.scoreText}}点</text>
+          <text class="pr-score">{{item.scoreText}}</text>
           <text class="pr-rank rank-badge-{{item.rank+1}}">{{item.rank + 1}}位</text>
           <text wx:if="{{item.isDealer}}" class="pr-dealer">庄</text>
         </view>

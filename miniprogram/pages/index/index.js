@@ -231,34 +231,49 @@ function getCurrentRank(scores, idx) {
 }
 
 function getFinalScore(rawScore, rank, oka, uma) {
-  let s = rawScore + uma[rank]
+  let s = rawScore + uma[rank] * 1000
   if (rank === 0) s += oka
   return s
 }
 
 function computeResults(state) {
-  const { scores, names, dealer, honba, riichi, oka, uma, windLabels } = state
+  const { scores, names, dealer, honba, riichi, oka, uma, windLabels, carryIn, returnPoints } = state
   const B = honba * 300
   const R = riichi
 
-  const rankOrder = getRankedOrder(scores)
-  const currentRank = rankOrder.map((_, i) => rankOrder.indexOf(i))
+  // 当局点数排名（用于顺位马推断）
+  const gameRankOrder = getRankedOrder(scores)
+  const gameRank = gameRankOrder.map((_, i) => gameRankOrder.indexOf(i))
+
+  // 总分排名 = (当局点 - 返点)/1000 + 当局顺位马 + 带入分
+  const totalScores = scores.map((s, i) => (s - returnPoints) / 1000 + uma[gameRank[i]] + (carryIn[i] || 0))
+  const totalRankOrder = getRankedOrder(totalScores)
+  const totalRank = totalRankOrder.map((_, i) => totalRankOrder.indexOf(i))
 
   const results = []
 
   for (let x = 0; x < 4; x++) {
-    const xRank = currentRank[x]
     const xIsDealer = (x === dealer)
     const targets = []
 
-    for (let rank = 0; rank < xRank; rank++) {
-      const y = rankOrder[rank]
-      const yScore = scores[y]
-      const rawGap = yScore - scores[x]
+    // 按总分排名确定追赶目标
+    for (let rank = 0; rank < totalRank[x]; rank++) {
+      const y = totalRankOrder[rank]
 
-      const newRankX = rank
-      const newRankY = Math.min(rank + 1, 3)
-      const finalGap = getFinalScore(yScore, newRankY, oka, uma) - getFinalScore(scores[x], newRankX, oka, uma)
+      // 当局点差
+      const rawGap = scores[y] - scores[x]
+      // 带入分差（目标带入分 - 自己带入分）
+      const carryAdj = ((carryIn[y] || 0) - (carryIn[x] || 0)) * 1000
+      // 顺位马变化：自己升到目标的当局rank，目标至少下降一位
+      const yGameRank = gameRank[y]
+      const xNewGameRank = yGameRank
+      const yNewGameRank = Math.min(yGameRank + 1, 3)
+      const umaAdj = (uma[yNewGameRank] - uma[xNewGameRank]) * 1000
+      // 实际需要追的点差
+      const adjustedGap = Math.max(rawGap, rawGap + carryAdj + umaAdj)
+
+      // 局终总分数差（用于显示）
+      const finalGap = getFinalScore(scores[y] + (carryIn[y] || 0) * 1000, yNewGameRank, oka, uma) - getFinalScore(scores[x] + (carryIn[x] || 0) * 1000, xNewGameRank, oka, uma)
 
       const yIsDealer = (y === dealer)
       const target = {
@@ -266,30 +281,27 @@ function computeResults(state) {
         targetName: names[y],
         targetWind: windLabels[y],
         targetRank: rank,
-        rawGap: rawGap,
+        rawGap: adjustedGap,
         finalGap: finalGap > 0 ? finalGap : 0,
         scenarios: {}
       }
 
       const strict = x > y
 
-      // Ron directly
       {
-        const t = Math.max(0, (rawGap - R) / 2 - B)
+        const t = Math.max(0, (adjustedGap - R) / 2 - B)
         const h = findMinRonHand(t, xIsDealer, strict)
         target.scenarios.ron = { label: '直击', threshold: t, hand: h, isDealer: xIsDealer }
       }
 
-      // Tsumo
       {
-        const t = Math.max(0, rawGap - R - 400 * honba)
+        const t = Math.max(0, adjustedGap - R - 400 * honba)
         const h = findMinTsumoHand(t, xIsDealer, yIsDealer, strict)
         target.scenarios.tsumo = { label: '自摸', threshold: t, hand: h, isDealer: xIsDealer }
       }
 
-      // Ron third party
       {
-        const t = Math.max(0, rawGap - B - R)
+        const t = Math.max(0, adjustedGap - B - R)
         const h = findMinRonThirdHand(t, xIsDealer, strict)
         target.scenarios.ronThird = { label: '旁击', threshold: t, hand: h, isDealer: xIsDealer }
       }
@@ -302,7 +314,9 @@ function computeResults(state) {
       name: names[x],
       wind: windLabels[x],
       score: scores[x],
-      rank: xRank,
+      carryIn: carryIn[x] || 0,
+      totalScore: totalScores[x],
+      rank: totalRank[x],
       isDealer: xIsDealer,
       targets
     })
@@ -350,6 +364,7 @@ Page({
 
     // Players
     players: [],
+    carryIn: [0, 0, 0, 0],
 
     // Results
     sortedResults: []
@@ -386,8 +401,11 @@ Page({
     const riichi = (parseInt(d.riichiCount) || 0) * 1000
     const honba = parseInt(d.honba) || 0
 
+    // carryIn is in score units (分数), converted to points via ×1000
+    const carryIn = (d.carryIn || [0, 0, 0, 0]).map(v => parseInt(v) || 0)
+
     return {
-      scores, names, dealer: d.dealer, honba, riichi, oka, uma, windLabels: WIND_LABELS, kiriage: d.kiriage
+      scores, names, dealer: d.dealer, honba, riichi, oka, uma, windLabels: WIND_LABELS, kiriage: d.kiriage, carryIn, returnPoints
     }
   },
 
@@ -406,7 +424,7 @@ Page({
         rank: rankOrder.indexOf(i)
       })
     }
-    this.setData({ players })
+    this.setData({ players, carryIn: [0, 0, 0, 0] })
   },
 
   updateAll() {
@@ -416,8 +434,12 @@ Page({
     RON_HANDS = generateHands(false, state.kiriage)
     TSUMO_HANDS = generateHands(true, state.kiriage)
 
-    // Update player cards (ranks, dealer status)
-    const rankOrder = getRankedOrder(state.scores)
+    // Update player cards (ranks based on total score)
+    const gameRankOrder = getRankedOrder(state.scores)
+    const totalScores = state.scores.map((s, i) =>
+      (s - state.returnPoints) / 1000 + state.uma[gameRankOrder.indexOf(i)] + (state.carryIn[i] || 0)
+    )
+    const rankOrder = getRankedOrder(totalScores)
     const players = this.data.players.map((p, i) => {
       const score = state.scores[i]
       const name = state.names[i]
@@ -434,12 +456,17 @@ Page({
     rawResults.sort((a, b) => b.rank - a.rank)
 
     const sortedResults = rawResults.map(r => {
+      const c = r.carryIn
+      const ts = r.totalScore
+      const scoreDisplay = r.score.toLocaleString() + '点 总分' + (ts > 0 ? '+' : '') + ts.toFixed(1) + '分'
       const item = {
         idx: r.idx,
         name: r.name,
         wind: r.wind,
         score: r.score,
-        scoreText: r.score.toLocaleString(),
+        carryIn: c,
+        totalScore: ts,
+        scoreText: scoreDisplay,
         rank: r.rank,
         isDealer: r.isDealer,
         targets: []
@@ -552,6 +579,14 @@ Page({
     const players = [...this.data.players]
     players[index] = { ...players[index], score: e.detail.value }
     this.setData({ players })
+    this.updateAll()
+  },
+
+  onCarryInInput(e) {
+    const index = parseInt(e.currentTarget.dataset.index)
+    const carryIn = [...this.data.carryIn]
+    carryIn[index] = e.detail.value
+    this.setData({ carryIn })
     this.updateAll()
   },
 

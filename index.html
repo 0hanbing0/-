@@ -324,6 +324,20 @@ body {
 .uma-preset { font-size: 11px; }
 .uma-preset select { font-size: 11px; padding: 2px 4px; width: auto; }
 
+.carry-input {
+  width: 80px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: #b0c8d0;
+  font-size: 13px;
+  font-family: 'Consolas', 'Courier New', monospace;
+  padding: 2px 6px;
+  text-align: center;
+  outline: none;
+}
+.carry-input:focus { border-color: var(--accent); }
+
 #kiriage { cursor: pointer; vertical-align: middle; }
 </style>
 </head>
@@ -651,7 +665,7 @@ function getState() {
   let uma;
   const preset = document.getElementById('umaPreset').value;
   if (preset === 'custom') {
-    uma = [
+    uma = [ 
       parseInt(document.getElementById('uma0').value) || 0,
       parseInt(document.getElementById('uma1').value) || 0,
       parseInt(document.getElementById('uma2').value) || 0,
@@ -663,7 +677,15 @@ function getState() {
 
   const kiriage = document.getElementById('kiriage').checked;
 
-  return { scores, names, dealer, honba, riichi, oka, uma, windLabels, kiriage };
+  // carryIn is in score units (分数), converted to points via ×1000
+  const carryIn = [];
+  for (let i = 0; i < 4; i++) {
+    const el = document.getElementById(`carry${i}`);
+    const v = el ? parseInt(el.value) : NaN;
+    carryIn[i] = isNaN(v) ? 0 : v;
+  }
+
+  return { scores, names, dealer, honba, riichi, oka, uma, windLabels, kiriage, carryIn, returnPoints };
 }
 
 function getRankedOrder(scores) {
@@ -679,14 +701,14 @@ function getCurrentRank(scores, idx) {
 }
 
 function getFinalScore(rawScore, rank, oka, uma) {
-  let s = rawScore + uma[rank];
+  let s = rawScore + uma[rank] * 1000;
   if (rank === 0) s += oka;
   return s;
 }
 
 function computeResults() {
   const st = getState();
-  const { scores, names, dealer, honba, riichi, oka, uma, kiriage } = st;
+  const { scores, names, dealer, honba, riichi, oka, uma, kiriage, carryIn, returnPoints } = st;
 
   currentKiriage = kiriage;
   RON_HANDS = generateHands(false, kiriage);
@@ -694,31 +716,39 @@ function computeResults() {
   const B = honba * 300;
   const R = riichi;
 
-  const rankOrder = getRankedOrder(scores);
-  const currentRank = rankOrder.map((_, i) => rankOrder.indexOf(i));
+  // 当局点数排名（用于顺位马推断）
+  const gameRankOrder = getRankedOrder(scores);
+  const gameRank = gameRankOrder.map((_, i) => gameRankOrder.indexOf(i));
+
+  // 总分排名 = (当局点 - 返点)/1000 + 当局顺位马 + 带入分
+  const totalScores = scores.map((s, i) => (s - returnPoints) / 1000 + uma[gameRank[i]] + carryIn[i]);
+  const totalRankOrder = getRankedOrder(totalScores);
+  const totalRank = totalRankOrder.map((_, i) => totalRankOrder.indexOf(i));
 
   const results = [];
 
   for (let x = 0; x < 4; x++) {
-    const xRank = currentRank[x];
     const xIsDealer = (x === dealer);
     const targets = [];
 
-    // Find all players ahead of X in ranking
-    for (let rank = 0; rank < xRank; rank++) {
-      const y = rankOrder[rank]; // player index at this rank
-      const yScore = scores[y];
+    // 按总分排名确定追赶目标
+    for (let rank = 0; rank < totalRank[x]; rank++) {
+      const y = totalRankOrder[rank];
 
-      // Raw gap
-      const rawGap = yScore - scores[x];
-      const rawGapAdjusted = rawGap; // used for hand calculation
+      // 当局点差
+      const rawGap = scores[y] - scores[x];
+      // 带入分差（目标带入分 - 自己带入分）
+      const carryAdj = (carryIn[y] - carryIn[x]) * 1000;
+      // 顺位马变化：自己升到目标的当局rank，目标至少下降一位
+      const yGameRank = gameRank[y];
+      const xNewGameRank = yGameRank;
+      const yNewGameRank = Math.min(yGameRank + 1, 3);
+      const umaAdj = (uma[yNewGameRank] - uma[xNewGameRank]) * 1000;
+      // 实际需要追的点差 = max(当局点差, 当局点差 + 带入分差 + 顺位马差)
+      const adjustedGap = Math.max(rawGap, rawGap + carryAdj + umaAdj);
 
-      // Gap with uma difference
-      // X moves to rank 'rank', Y drops to xRank (or rank+1 depending)
-      // For simplicity: X takes over Y's rank, Y drops one rank
-      const newRankX = rank;
-      const newRankY = Math.min(rank + 1, 3);
-      const finalGap = getFinalScore(yScore, newRankY, oka, uma) - getFinalScore(scores[x], newRankX, oka, uma);
+      // 局终总分数差（用于显示）
+      const finalGap = getFinalScore(scores[y] + carryIn[y] * 1000, yNewGameRank, oka, uma) - getFinalScore(scores[x] + carryIn[x] * 1000, xNewGameRank, oka, uma);
 
       const yIsDealer = (y === dealer);
       const target = {
@@ -726,48 +756,29 @@ function computeResults() {
         targetName: names[y],
         targetWind: st.windLabels[y],
         targetRank: rank,
-        rawGap,
+        rawGap: adjustedGap,
         finalGap: finalGap > 0 ? finalGap : 0,
         scenarios: {}
       };
 
-      // 风位对比：追赶者风位劣于目标时(x>y)，需严格反超而非追平
       const strict = x > y;
 
-      // Scenario: Ron Y directly
       {
-        const t = Math.max(0, (rawGap - R) / 2 - B);
+        const t = Math.max(0, (adjustedGap - R) / 2 - B);
         const h = findMinRonHand(t, xIsDealer, strict);
-        target.scenarios.ron = {
-          label: '直击',
-          threshold: t,
-          hand: h,
-          isDealer: xIsDealer
-        };
+        target.scenarios.ron = { label: '直击', threshold: t, hand: h, isDealer: xIsDealer };
       }
 
-      // Scenario: Tsumo
       {
-        const t = Math.max(0, rawGap - R - 400 * honba);
+        const t = Math.max(0, adjustedGap - R - 400 * honba);
         const h = findMinTsumoHand(t, xIsDealer, yIsDealer, strict);
-        target.scenarios.tsumo = {
-          label: '自摸',
-          threshold: t,
-          hand: h,
-          isDealer: xIsDealer
-        };
+        target.scenarios.tsumo = { label: '自摸', threshold: t, hand: h, isDealer: xIsDealer };
       }
 
-      // Scenario: Ron third party
       {
-        const t = Math.max(0, rawGap - B - R);
+        const t = Math.max(0, adjustedGap - B - R);
         const h = findMinRonThirdHand(t, xIsDealer, strict);
-        target.scenarios.ronThird = {
-          label: '旁击',
-          threshold: t,
-          hand: h,
-          isDealer: xIsDealer
-        };
+        target.scenarios.ronThird = { label: '旁击', threshold: t, hand: h, isDealer: xIsDealer };
       }
 
       targets.push(target);
@@ -778,7 +789,9 @@ function computeResults() {
       name: names[x],
       wind: st.windLabels[x],
       score: scores[x],
-      rank: xRank,
+      carryIn: carryIn[x],
+      totalScore: totalScores[x],
+      rank: totalRank[x],
       isDealer: xIsDealer,
       targets
     });
@@ -793,17 +806,25 @@ function computeResults() {
 
 function renderPlayerCards() {
   const st = getState();
-  const rankOrder = getRankedOrder(st.scores);
+  // Rank by total score: (分数 - 返点)/1000 + 当局顺位马 + 带入分
+  const gameRankOrder = getRankedOrder(st.scores);
+  const totalScores = st.scores.map((s, i) =>
+    (s - st.returnPoints) / 1000 + st.uma[gameRankOrder.indexOf(i)] + st.carryIn[i]
+  );
+  const rankOrder = getRankedOrder(totalScores);
   const container = document.getElementById('playerCards');
 
   // Preserve current raw input values from DOM so partial typing (e.g. "-") isn't lost
   const rawScores = [];
   const rawNames = [];
+  const rawCarryIns = [];
   for (let i = 0; i < 4; i++) {
     const scoreEl = document.getElementById(`score${i}`);
     rawScores[i] = scoreEl ? scoreEl.value : st.scores[i];
     const nameEl = document.getElementById(`name${i}`);
     rawNames[i] = nameEl ? nameEl.value : st.names[i];
+    const carryEl = document.getElementById(`carry${i}`);
+    rawCarryIns[i] = carryEl ? carryEl.value : (st.carryIn ? st.carryIn[i] : 0);
   }
 
   let html = '';
@@ -813,6 +834,7 @@ function renderPlayerCards() {
     const dealerClass = isDealer ? ' dealer' : '';
     const displayScore = rawScores[i] !== undefined ? rawScores[i] : st.scores[i];
     const displayName = rawNames[i] !== undefined ? rawNames[i] : st.names[i];
+    const displayCarry = rawCarryIns[i] !== undefined ? rawCarryIns[i] : (st.carryIn ? st.carryIn[i] : 0);
 
     html += `
       <div class="player-card${dealerClass}">
@@ -821,6 +843,10 @@ function renderPlayerCards() {
           <input class="name-input" id="name${i}" value="${escapeHtml(displayName)}" placeholder="${st.windLabels[i]}" onchange="updateAll()">
         </div>
         <input class="score-input" type="text" inputmode="numeric" id="score${i}" value="${escapeHtml(displayScore)}" onchange="updateAll()">
+        <div style="margin-top:4px">
+          <span style="font-size:11px;color:var(--text-dim)">带入(分)</span>
+          <input class="carry-input" type="text" inputmode="numeric" id="carry${i}" value="${escapeHtml(displayCarry)}" onchange="updateAll()">
+        </div>
         <div class="rank-display">
           <span class="rank-${rank + 1}-text">${rank + 1}位</span>
         </div>
@@ -861,6 +887,8 @@ function renderResults() {
             <span class="pr-wind">${r.wind}</span>
             <span class="pr-name">${escapeHtml(r.name)}</span>
             <span class="pr-score">${r.score.toLocaleString()}点</span>
+            <span style="font-size:12px;color:var(--accent)">总分${r.totalScore > 0 ? '+' : ''}${r.totalScore.toFixed(1)}分</span>
+            ${r.carryIn !== 0 ? `<span style="font-size:11px;color:var(--text-dim)">(带入 ${r.carryIn > 0 ? '+' : ''}${r.carryIn}分)</span>` : ''}
             <span class="pr-rank ${rankBadge}">${r.rank + 1}位</span>
             ${r.isDealer ? '<span style="color:#e0a060;font-size:11px">庄</span>' : ''}
           </div>
@@ -892,6 +920,8 @@ function renderResults() {
           <span class="pr-wind">${r.wind}</span>
           <span class="pr-name">${escapeHtml(r.name)}</span>
           <span class="pr-score">${r.score.toLocaleString()}点</span>
+          <span style="font-size:12px;color:var(--accent)">总分${r.totalScore > 0 ? '+' : ''}${r.totalScore.toFixed(1)}分</span>
+          ${r.carryIn !== 0 ? `<span style="font-size:11px;color:var(--text-dim)">(带入 ${r.carryIn > 0 ? '+' : ''}${r.carryIn}分)</span>` : ''}
           <span class="pr-rank ${rankBadge}">${r.rank + 1}位</span>
           ${r.isDealer ? '<span style="color:#e0a060;font-size:11px">庄</span>' : ''}
         </div>
